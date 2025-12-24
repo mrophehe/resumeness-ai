@@ -1,14 +1,18 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { oneDark } from '@codemirror/theme-one-dark';
 import { motion } from 'framer-motion';
-import { Code, Eye, Download, RotateCcw, Maximize2 } from 'lucide-react';
+import { Code, Eye, Download, RotateCcw, Maximize2, Loader2, FileDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useResumeStore } from '@/stores/useResumeStore';
+import { compileLatexToPdf, downloadPdf } from '@/lib/latexCompiler';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+
 
 export const LaTeXEditor = () => {
   const { latexContent, setLatexContent, activePanel, setActivePanel, addVersion } = useResumeStore();
+  const [isCompiling, setIsCompiling] = useState(false);
+  const { toast } = useToast();
 
   const handleChange = useCallback((value: string) => {
     setLatexContent(value);
@@ -19,9 +23,13 @@ export const LaTeXEditor = () => {
       latex: latexContent,
       description: 'Manual save',
     });
+    toast({
+      title: 'Version saved',
+      description: 'Your resume version has been saved.',
+    });
   };
 
-  const handleDownload = () => {
+  const handleDownloadTex = () => {
     const blob = new Blob([latexContent], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -29,6 +37,35 @@ export const LaTeXEditor = () => {
     a.download = 'resume.tex';
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPdf = async () => {
+    setIsCompiling(true);
+    try {
+      const result = await compileLatexToPdf(latexContent);
+      
+      if (result.success && result.pdfBlob) {
+        downloadPdf(result.pdfBlob, 'resume.pdf');
+        toast({
+          title: 'PDF downloaded',
+          description: 'Your resume has been compiled and downloaded.',
+        });
+      } else {
+        toast({
+          title: 'Compilation failed',
+          description: result.error || 'Failed to compile LaTeX to PDF.',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to compile PDF.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCompiling(false);
+    }
   };
 
   return (
@@ -68,8 +105,23 @@ export const LaTeXEditor = () => {
           <Button variant="ghost" size="iconSm" onClick={handleSaveVersion} title="Save Version">
             <RotateCcw className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="iconSm" onClick={handleDownload} title="Download .tex">
+          <Button variant="ghost" size="iconSm" onClick={handleDownloadTex} title="Download .tex">
             <Download className="w-4 h-4" />
+          </Button>
+          <Button 
+            variant="default" 
+            size="sm" 
+            onClick={handleDownloadPdf} 
+            disabled={isCompiling}
+            title="Download PDF"
+            className="bg-primary hover:bg-primary/90"
+          >
+            {isCompiling ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <FileDown className="w-4 h-4 mr-2" />
+            )}
+            PDF
           </Button>
           <Button variant="ghost" size="iconSm" title="Fullscreen">
             <Maximize2 className="w-4 h-4" />
@@ -88,7 +140,7 @@ export const LaTeXEditor = () => {
             <CodeMirror
               value={latexContent}
               height="100%"
-              theme={oneDark}
+              theme="light"
               onChange={handleChange}
               className="h-full text-sm"
               basicSetup={{
@@ -141,11 +193,11 @@ const ResumePreview = ({ latex }: { latex: string }) => {
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="h-full overflow-auto bg-background p-8"
+      className="h-full overflow-auto bg-secondary/30 p-8"
     >
-      <div className="max-w-[8.5in] mx-auto bg-foreground/[0.02] border border-border/50 rounded-lg shadow-lg p-8 min-h-[11in]">
+      <div className="max-w-[8.5in] mx-auto bg-card border border-border rounded-lg shadow-lg p-8 min-h-[11in]">
         {/* Header */}
-        <div className="text-center mb-6 pb-4 border-b border-border/30">
+        <div className="text-center mb-6 pb-4 border-b border-border/50">
           <h1 className="text-2xl font-bold text-foreground mb-2">{parsed.name}</h1>
           <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
             {parsed.email && <span>✉ {parsed.email}</span>}
